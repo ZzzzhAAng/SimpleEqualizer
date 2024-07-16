@@ -95,6 +95,13 @@ void SimpleEqualizerAudioProcessor::prepareToPlay (double sampleRate, int sample
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
+    juce::dsp::ProcessSpec spec;
+    spec.maximumBlockSize = samplesPerBlock;
+    spec.numChannels = 1;
+    spec.sampleRate = sampleRate;
+    
+    leftChain.prepare(spec);
+    rightChain.prepare(spec);
 }
 
 void SimpleEqualizerAudioProcessor::releaseResources()
@@ -142,7 +149,20 @@ void SimpleEqualizerAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     // when they first compile a plugin, but obviously you don't need to keep
     // this code if your algorithm always overwrites all the output channels.
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+    {
         buffer.clear (i, 0, buffer.getNumSamples());
+    }
+    
+    juce::dsp::AudioBlock<float> block(buffer);
+    
+    auto leftBlock = block.getSingleChannelBlock(0);
+    auto rightBlock = block.getSingleChannelBlock(1);
+    
+    juce::dsp::ProcessContextReplacing<float> leftContext(leftBlock);
+    juce::dsp::ProcessContextReplacing<float> rightContext(rightBlock);
+    
+    leftChain.process(leftContext);
+    rightChain.process(rightContext);
 
     // This is the place where you'd normally do the guts of your plugin's
     // audio processing...
@@ -166,7 +186,8 @@ bool SimpleEqualizerAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* SimpleEqualizerAudioProcessor::createEditor()
 {
-    return new SimpleEqualizerAudioProcessorEditor (*this);
+    //return new SimpleEqualizerAudioProcessorEditor (*this);
+    return new juce::GenericAudioProcessorEditor (*this);
 }
 
 //==============================================================================
@@ -181,6 +202,51 @@ void SimpleEqualizerAudioProcessor::setStateInformation (const void* data, int s
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout SimpleEqualizerAudioProcessor::createParameterLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+    using namespace juce;
+    
+    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"HighPass Freq", 1},
+                                                           "HighPass Freq",
+                                                           juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f), 20.f));
+    
+    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"LowPass Freq", 1},
+                                                           "LowPass Freq",
+                                                           juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f), 20000.f));
+    
+    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"Peak Freq", 1},
+                                                           "Peak Freq",
+                                                           juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f), 1000.f));
+    
+    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"Peak Gain", 1},
+                                                           "Peak Gain",
+                                                           juce::NormalisableRange<float>(-24.f, 24.f, 0.1f, 1.f), 0.0f));
+    
+    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"Quality", 1},
+                                                           "Quality",
+                                                           juce::NormalisableRange<float>(0.1f, 10.f, 0.05f, 1.f), 1.f));
+    
+    juce::StringArray stringArray;
+    for (int i = 0; i < 6; ++i)
+    {
+        juce::String str;
+        str << (6 + i * 6);
+        str << " db/Oct";
+        stringArray.add(str);
+    }
+    
+    layout.add(std::make_unique<juce::AudioParameterChoice>(ParameterID{"HighPass Slope", 1}, "HighPass Slope", stringArray, 0));
+    layout.add(std::make_unique<juce::AudioParameterChoice>(ParameterID{"LowPass Slope", 1}, "LowPass Slope", stringArray, 0));
+    
+    layout.add(std::make_unique<juce::AudioParameterBool>(ParameterID{"HighPass Bypass", 1}, "HighPass Bypass", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>(ParameterID{"LowPass Bypass", 1}, "LowPass Bypass", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>(ParameterID{"Peak Bypass", 1}, "Peak Bypass", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>(ParameterID{"Analyzer Enabled", 1}, "Analyzer Enabled", true));
+    
+    return layout;
 }
 
 //==============================================================================
