@@ -89,6 +89,57 @@ private:
         LowPass
     };
     
+    void updatePeakFilter (const ChainSettings& chainSettings);
+    using Coefficients = Filter::CoefficientsPtr;
+    static void updateCoefficients (Coefficients& old, const Coefficients& replacements);
+    
+    template<int Index, typename ChainType, typename CoefficientType>
+    void update (ChainType& chain, const CoefficientType& Coefficients)
+    {
+        updateCoefficients(chain.template get<Index>().coefficients, Coefficients[Index]);
+        chain.template setBypassed<Index>(false);
+    }
+    
+    template<typename ChainType, typename CoefficientType>
+    void updatePassFilter (ChainType& leftHighPass,
+                           const CoefficientType& passCoefficients,
+                           const Slope& highPassSlope)
+    {
+        leftHighPass.template setBypassed<0>(true);
+        leftHighPass.template setBypassed<1>(true);
+        leftHighPass.template setBypassed<2>(true);
+        leftHighPass.template setBypassed<3>(true);
+        leftHighPass.template setBypassed<4>(true);
+        leftHighPass.template setBypassed<5>(true);
+        
+        switch (highPassSlope) {
+            case Slope_36:
+            {
+                update<5>(leftHighPass, passCoefficients);
+            }
+            case Slope_30:
+            {
+                update<4>(leftHighPass, passCoefficients);
+            }
+            case Slope_24:
+            {
+                update<3>(leftHighPass, passCoefficients);
+            }
+            case Slope_18:
+            {
+                update<2>(leftHighPass, passCoefficients);
+            }
+            case Slope_12:
+            {
+                update<1>(leftHighPass, passCoefficients);
+            }
+            case Slope_6:
+            {
+                update<0>(leftHighPass, passCoefficients);
+            }
+        }
+    }
+    
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleEqualizerAudioProcessor)
 };
