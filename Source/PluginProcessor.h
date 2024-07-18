@@ -140,6 +140,10 @@ private:
         }
     }
     
+    void updateHighPassFilters (const ChainSettings& chainsettings);
+    void updateLowPassFilters (const ChainSettings& chainsettings);
+    void updateFilters();
+    
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleEqualizerAudioProcessor)
 };

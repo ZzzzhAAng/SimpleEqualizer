@@ -103,19 +103,7 @@ void SimpleEqualizerAudioProcessor::prepareToPlay (double sampleRate, int sample
     leftChain.prepare(spec);
     rightChain.prepare(spec);
     
-    auto chainSettings = getChainSettings(apvts);
-    
-    updatePeakFilter(chainSettings);
-    
-    auto passCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.highPassFreq,
-                                                                                                        sampleRate,
-                                                                                                        2 * (chainSettings.highPassSlope + 1));
-    
-    auto& leftHighPass = leftChain.get<ChainPositions::HighPass>();
-    updatePassFilter(leftHighPass, passCoefficients, chainSettings.highPassSlope);
-    
-    auto& rightHighPass = rightChain.get<ChainPositions::HighPass>();
-    updatePassFilter(rightHighPass, passCoefficients, chainSettings.highPassSlope);
+    updateFilters();
 }
 
 void SimpleEqualizerAudioProcessor::releaseResources()
@@ -167,20 +155,7 @@ void SimpleEqualizerAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
         buffer.clear (i, 0, buffer.getNumSamples());
     }
     
-    
-    auto chainSettings = getChainSettings(apvts);
-    
-    updatePeakFilter(chainSettings);
-    
-    auto passCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.highPassFreq,
-                                                                                                        getSampleRate(),
-                                                                                                        2 * (chainSettings.highPassSlope + 1));
-    
-    auto& leftHighPass = leftChain.get<ChainPositions::HighPass>();
-    updatePassFilter(leftHighPass, passCoefficients, chainSettings.highPassSlope);
-    
-    auto& rightHighPass = rightChain.get<ChainPositions::HighPass>();
-    updatePassFilter(rightHighPass, passCoefficients, chainSettings.highPassSlope);
+    updateFilters();
     
     juce::dsp::AudioBlock<float> block(buffer);
     
@@ -263,6 +238,38 @@ void SimpleEqualizerAudioProcessor::updatePeakFilter(const ChainSettings &chainS
 void SimpleEqualizerAudioProcessor::updateCoefficients(Coefficients &old, const Coefficients &replacements)
 {
     *old = *replacements;
+}
+
+void SimpleEqualizerAudioProcessor::updateHighPassFilters(const ChainSettings &chainSettings)
+{
+    auto highPassCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.highPassFreq,
+                                                                                                        getSampleRate(),
+                                                                                                        2 * (chainSettings.highPassSlope + 1));
+    auto& leftHighPass = leftChain.get<ChainPositions::HighPass>();
+    auto& rightHighPass = rightChain.get<ChainPositions::HighPass>();
+    
+    updatePassFilter(leftHighPass, highPassCoefficients, chainSettings.highPassSlope);
+    updatePassFilter(rightHighPass, highPassCoefficients, chainSettings.highPassSlope);
+}
+
+void SimpleEqualizerAudioProcessor::updateLowPassFilters(const ChainSettings &chainSettings)
+{
+    auto lowPassCoefficients = juce::dsp::FilterDesign<float>::designIIRLowpassHighOrderButterworthMethod(chainSettings.lowPassFreq,
+                                                                                                          getSampleRate(),
+                                                                                                          2 * (chainSettings.lowPassSlope + 1));
+    auto& leftLowPass = leftChain.get<ChainPositions::LowPass>();
+    auto& rightLowPass = rightChain.get<ChainPositions::LowPass>();
+    updatePassFilter(leftLowPass, lowPassCoefficients, chainSettings.lowPassSlope);
+    updatePassFilter(rightLowPass, lowPassCoefficients, chainSettings.lowPassSlope);
+}
+
+void SimpleEqualizerAudioProcessor::updateFilters()
+{
+    auto chainSettings = getChainSettings(apvts);
+    
+    updateHighPassFilters(chainSettings);
+    updateLowPassFilters(chainSettings);
+    updatePeakFilter(chainSettings);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SimpleEqualizerAudioProcessor::createParameterLayout()
