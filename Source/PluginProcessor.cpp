@@ -190,8 +190,8 @@ bool SimpleEqualizerAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* SimpleEqualizerAudioProcessor::createEditor()
 {
-    //return new SimpleEqualizerAudioProcessorEditor (*this);
-    return new juce::GenericAudioProcessorEditor (*this);
+    return new SimpleEqualizerAudioProcessorEditor (*this);
+    //return new juce::GenericAudioProcessorEditor (*this);
 }
 
 //==============================================================================
@@ -200,12 +200,20 @@ void SimpleEqualizerAudioProcessor::getStateInformation (juce::MemoryBlock& dest
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
+    juce::MemoryOutputStream mos(destData, true);
+    apvts.state.writeToStream(mos);
 }
 
 void SimpleEqualizerAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
+    auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
+    if (tree.isValid())
+    {
+        apvts.replaceState(tree);
+        updateFilters();
+    }
 }
 
 ChainSettings getChainSettings (juce::AudioProcessorValueTreeState& apvts)
@@ -224,7 +232,7 @@ ChainSettings getChainSettings (juce::AudioProcessorValueTreeState& apvts)
     return settings;
 }
 
-void SimpleEqualizerAudioProcessor::updatePeakFilter(const ChainSettings &chainSettings)
+void SimpleEqualizerAudioProcessor::updatePeakFilter (const ChainSettings &chainSettings)
 {
     auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),
                                                                                 chainSettings.peakFreq,
@@ -235,12 +243,12 @@ void SimpleEqualizerAudioProcessor::updatePeakFilter(const ChainSettings &chainS
     updateCoefficients(rightChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
 }
 
-void SimpleEqualizerAudioProcessor::updateCoefficients(Coefficients &old, const Coefficients &replacements)
+void SimpleEqualizerAudioProcessor::updateCoefficients (Coefficients &old, const Coefficients &replacements)
 {
     *old = *replacements;
 }
 
-void SimpleEqualizerAudioProcessor::updateHighPassFilters(const ChainSettings &chainSettings)
+void SimpleEqualizerAudioProcessor::updateHighPassFilters (const ChainSettings &chainSettings)
 {
     auto highPassCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.highPassFreq,
                                                                                                         getSampleRate(),
@@ -252,7 +260,7 @@ void SimpleEqualizerAudioProcessor::updateHighPassFilters(const ChainSettings &c
     updatePassFilter(rightHighPass, highPassCoefficients, chainSettings.highPassSlope);
 }
 
-void SimpleEqualizerAudioProcessor::updateLowPassFilters(const ChainSettings &chainSettings)
+void SimpleEqualizerAudioProcessor::updateLowPassFilters (const ChainSettings &chainSettings)
 {
     auto lowPassCoefficients = juce::dsp::FilterDesign<float>::designIIRLowpassHighOrderButterworthMethod(chainSettings.lowPassFreq,
                                                                                                           getSampleRate(),
