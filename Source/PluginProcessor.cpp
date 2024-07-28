@@ -100,8 +100,8 @@ void SimpleEqualizerAudioProcessor::prepareToPlay (double sampleRate, int sample
     spec.numChannels = 1;
     spec.sampleRate = sampleRate;
     
-    leftChain.prepare(spec);
-    rightChain.prepare(spec);
+    leftChain.prepare (spec);
+    rightChain.prepare (spec);
     
     updateFilters();
 }
@@ -157,16 +157,16 @@ void SimpleEqualizerAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     
     updateFilters();
     
-    juce::dsp::AudioBlock<float> block(buffer);
+    juce::dsp::AudioBlock<float> block (buffer);
     
     auto leftBlock = block.getSingleChannelBlock(0);
     auto rightBlock = block.getSingleChannelBlock(1);
     
-    juce::dsp::ProcessContextReplacing<float> leftContext(leftBlock);
-    juce::dsp::ProcessContextReplacing<float> rightContext(rightBlock);
+    juce::dsp::ProcessContextReplacing<float> leftContext (leftBlock);
+    juce::dsp::ProcessContextReplacing<float> rightContext (rightBlock);
     
-    leftChain.process(leftContext);
-    rightChain.process(rightContext);
+    leftChain.process (leftContext);
+    rightChain.process (rightContext);
 
     // This is the place where you'd normally do the guts of your plugin's
     // audio processing...
@@ -191,7 +191,7 @@ bool SimpleEqualizerAudioProcessor::hasEditor() const
 juce::AudioProcessorEditor* SimpleEqualizerAudioProcessor::createEditor()
 {
     return new SimpleEqualizerAudioProcessorEditor (*this);
-    //return new juce::GenericAudioProcessorEditor (*this);
+    //\return new juce::GenericAudioProcessorEditor (*this);
 }
 
 //==============================================================================
@@ -200,18 +200,18 @@ void SimpleEqualizerAudioProcessor::getStateInformation (juce::MemoryBlock& dest
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
-    juce::MemoryOutputStream mos(destData, true);
-    apvts.state.writeToStream(mos);
+    juce::MemoryOutputStream mos (destData, true);
+    apvts.state.writeToStream (mos);
 }
 
 void SimpleEqualizerAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
-    auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
+    auto tree = juce::ValueTree::readFromData (data, sizeInBytes);
     if (tree.isValid())
     {
-        apvts.replaceState(tree);
+        apvts.replaceState (tree);
         updateFilters();
     }
 }
@@ -221,63 +221,65 @@ ChainSettings getChainSettings (juce::AudioProcessorValueTreeState& apvts)
     ChainSettings settings;
     using namespace juce;
     
-    settings.highPassFreq = apvts.getRawParameterValue("HighPass Freq")->load();
-    settings.lowPassFreq = apvts.getRawParameterValue("LowPass Freq")->load();
-    settings.peakFreq = apvts.getRawParameterValue("Peak Freq")->load();
-    settings.peakGainInDecibels = apvts.getRawParameterValue("Peak Gain")->load();
-    settings.peakQuality = apvts.getRawParameterValue("Peak Quality")->load();
-    settings.highPassSlope = static_cast<Slope>(apvts.getRawParameterValue("HighPass Slope")->load());
-    settings.lowPassSlope = static_cast<Slope>(apvts.getRawParameterValue("LowPass Slope")->load());
+    settings.highPassFreq = apvts.getRawParameterValue ("HighPass Freq") -> load();
+    settings.lowPassFreq = apvts.getRawParameterValue ("LowPass Freq") -> load();
+    settings.peakFreq = apvts.getRawParameterValue ("Peak Freq") -> load();
+    settings.peakGainInDecibels = apvts.getRawParameterValue ("Peak Gain") -> load();
+    settings.peakQuality = apvts.getRawParameterValue ("Peak Quality") -> load();
+    settings.highPassSlope = static_cast<Slope>(apvts.getRawParameterValue ("HighPass Slope") -> load());
+    settings.lowPassSlope = static_cast<Slope>(apvts.getRawParameterValue ("LowPass Slope") -> load());
     
     return settings;
 }
 
-void SimpleEqualizerAudioProcessor::updatePeakFilter (const ChainSettings &chainSettings)
+Coefficients makePeakFilter (const ChainSettings& chainSettings, double sampleRate)
 {
-    auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),
-                                                                                chainSettings.peakFreq,
-                                                                                chainSettings.peakQuality,
-                                                                                juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels));
-    
-    updateCoefficients(leftChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
-    updateCoefficients(rightChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+    return juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate,
+                                                                chainSettings.peakFreq,
+                                                                chainSettings.peakQuality,
+                                                                juce::Decibels::decibelsToGain (chainSettings.peakGainInDecibels));
 }
 
-void SimpleEqualizerAudioProcessor::updateCoefficients (Coefficients &old, const Coefficients &replacements)
+void SimpleEqualizerAudioProcessor::updatePeakFilter (const ChainSettings &chainSettings)
+{
+
+    
+    auto peakCoefficients = makePeakFilter(chainSettings, getSampleRate());
+    updateCoefficients (leftChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+    updateCoefficients (rightChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+}
+
+void /*SimpleEqualizerAudioProcessor*/::updateCoefficients (Coefficients &old, const Coefficients &replacements)
 {
     *old = *replacements;
 }
 
 void SimpleEqualizerAudioProcessor::updateHighPassFilters (const ChainSettings &chainSettings)
 {
-    auto highPassCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.highPassFreq,
-                                                                                                        getSampleRate(),
-                                                                                                        2 * (chainSettings.highPassSlope + 1));
+    auto highPassCoefficients = makeHighPassFilter(chainSettings, getSampleRate());
     auto& leftHighPass = leftChain.get<ChainPositions::HighPass>();
     auto& rightHighPass = rightChain.get<ChainPositions::HighPass>();
     
-    updatePassFilter(leftHighPass, highPassCoefficients, chainSettings.highPassSlope);
-    updatePassFilter(rightHighPass, highPassCoefficients, chainSettings.highPassSlope);
+    updatePassFilter (leftHighPass, highPassCoefficients, chainSettings.highPassSlope);
+    updatePassFilter (rightHighPass, highPassCoefficients, chainSettings.highPassSlope);
 }
 
 void SimpleEqualizerAudioProcessor::updateLowPassFilters (const ChainSettings &chainSettings)
 {
-    auto lowPassCoefficients = juce::dsp::FilterDesign<float>::designIIRLowpassHighOrderButterworthMethod(chainSettings.lowPassFreq,
-                                                                                                          getSampleRate(),
-                                                                                                          2 * (chainSettings.lowPassSlope + 1));
+    auto lowPassCoefficients = makeLowPassFilter (chainSettings, getSampleRate());
     auto& leftLowPass = leftChain.get<ChainPositions::LowPass>();
     auto& rightLowPass = rightChain.get<ChainPositions::LowPass>();
-    updatePassFilter(leftLowPass, lowPassCoefficients, chainSettings.lowPassSlope);
-    updatePassFilter(rightLowPass, lowPassCoefficients, chainSettings.lowPassSlope);
+    updatePassFilter (leftLowPass, lowPassCoefficients, chainSettings.lowPassSlope);
+    updatePassFilter (rightLowPass, lowPassCoefficients, chainSettings.lowPassSlope);
 }
 
 void SimpleEqualizerAudioProcessor::updateFilters()
 {
-    auto chainSettings = getChainSettings(apvts);
+    auto chainSettings = getChainSettings (apvts);
     
-    updateHighPassFilters(chainSettings);
-    updateLowPassFilters(chainSettings);
-    updatePeakFilter(chainSettings);
+    updateHighPassFilters (chainSettings);
+    updateLowPassFilters (chainSettings);
+    updatePeakFilter (chainSettings);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SimpleEqualizerAudioProcessor::createParameterLayout()
@@ -285,25 +287,25 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEqualizerAudioProcesso
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
     using namespace juce;
     
-    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"HighPass Freq", 1},
+    layout.add (std::make_unique<juce::AudioParameterFloat> (ParameterID {"HighPass Freq", 1},
                                                            "HighPass Freq",
-                                                           juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f), 20.f));
+                                                           juce::NormalisableRange<float> (20.f, 20000.f, 1.f, 0.25f), 20.f));
     
-    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"LowPass Freq", 1},
+    layout.add (std::make_unique<juce::AudioParameterFloat> (ParameterID {"LowPass Freq", 1},
                                                            "LowPass Freq",
-                                                           juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f), 20000.f));
+                                                           juce::NormalisableRange<float> (20.f, 20000.f, 1.f, 0.25f), 20000.f));
     
-    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"Peak Freq", 1},
+    layout.add (std::make_unique<juce::AudioParameterFloat> (ParameterID {"Peak Freq", 1},
                                                            "Peak Freq",
-                                                           juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f), 1000.f));
+                                                           juce::NormalisableRange<float> (20.f, 20000.f, 1.f, 0.25f), 1000.f));
     
-    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"Peak Gain", 1},
+    layout.add (std::make_unique<juce::AudioParameterFloat> (ParameterID {"Peak Gain", 1},
                                                            "Peak Gain",
-                                                           juce::NormalisableRange<float>(-24.f, 24.f, 0.1f, 1.f), 0.0f));
+                                                           juce::NormalisableRange<float> (-24.f, 24.f, 0.1f, 1.f), 0.0f));
     
-    layout.add(std::make_unique<juce::AudioParameterFloat>(ParameterID{"Peak Quality", 1},
+    layout.add (std::make_unique<juce::AudioParameterFloat> (ParameterID {"Peak Quality", 1},
                                                            "Peak Quality",
-                                                           juce::NormalisableRange<float>(0.1f, 10.f, 0.05f, 1.f), 1.f));
+                                                           juce::NormalisableRange<float> (0.1f, 10.f, 0.05f, 1.f), 1.f));
     
     juce::StringArray stringArray;
     for (int i = 0; i < 6; ++i)
@@ -314,13 +316,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEqualizerAudioProcesso
         stringArray.add(str);
     }
     
-    layout.add(std::make_unique<juce::AudioParameterChoice>(ParameterID{"HighPass Slope", 1}, "HighPass Slope", stringArray, 0));
-    layout.add(std::make_unique<juce::AudioParameterChoice>(ParameterID{"LowPass Slope", 1}, "LowPass Slope", stringArray, 0));
+    layout.add (std::make_unique<juce::AudioParameterChoice> (ParameterID {"HighPass Slope", 1}, "HighPass Slope", stringArray, 0));
+    layout.add (std::make_unique<juce::AudioParameterChoice> (ParameterID {"LowPass Slope", 1}, "LowPass Slope", stringArray, 0));
     
-    layout.add(std::make_unique<juce::AudioParameterBool>(ParameterID{"HighPass Bypass", 1}, "HighPass Bypass", false));
-    layout.add(std::make_unique<juce::AudioParameterBool>(ParameterID{"LowPass Bypass", 1}, "LowPass Bypass", false));
-    layout.add(std::make_unique<juce::AudioParameterBool>(ParameterID{"Peak Bypass", 1}, "Peak Bypass", false));
-    layout.add(std::make_unique<juce::AudioParameterBool>(ParameterID{"Analyzer Enabled", 1}, "Analyzer Enabled", true));
+    layout.add (std::make_unique<juce::AudioParameterBool> (ParameterID {"HighPass Bypass", 1}, "HighPass Bypass", false));
+    layout.add (std::make_unique<juce::AudioParameterBool> (ParameterID {"LowPass Bypass", 1}, "LowPass Bypass", false));
+    layout.add (std::make_unique<juce::AudioParameterBool> (ParameterID {"Peak Bypass", 1}, "Peak Bypass", false));
+    layout.add (std::make_unique<juce::AudioParameterBool> (ParameterID {"Analyzer Enabled", 1}, "Analyzer Enabled", true));
     
     return layout;
 }
