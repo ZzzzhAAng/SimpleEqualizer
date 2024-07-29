@@ -9,24 +9,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-//==============================================================================
-SimpleEqualizerAudioProcessorEditor::SimpleEqualizerAudioProcessorEditor (SimpleEqualizerAudioProcessor& p)
-    : AudioProcessorEditor (&p), audioProcessor (p),
-highPassFreqSliderAttachment (audioProcessor.apvts, "HighPass Freq", highPassFreqSlider),
-highPassSlopeSliderAttachment (audioProcessor.apvts, "HighPass Slope", highPassSlopeSlider),
-lowPassFreqSliderAttachment (audioProcessor.apvts, "LowPass Freq", lowPassFreqSlider),
-lowPassSlopeSliderAttachment (audioProcessor.apvts, "LowPass Slope", lowPassSlopeSlider),
-peakFreqSliderAttachment (audioProcessor.apvts, "Peak Freq", peakFreqSlider),
-peakGainSliderAttachment (audioProcessor.apvts, "Peak Gain", peakGainSlider),
-peakQualitySliderAttachment (audioProcessor.apvts, "Peak Quality", peakQualitySlider)
+ResponseCurveComponent::ResponseCurveComponent (SimpleEqualizerAudioProcessor& p) : audioProcessor (p)
 {
-    // Make sure that before the constructor has finished, you've set the
-    // editor's size to whatever you need it to be.
-    for (auto* comp : getComps())
-    {
-        addAndMakeVisible (comp);
-    }
-    
     const auto& params = audioProcessor.getParameters();
     for (auto param : params)
     {
@@ -34,11 +18,9 @@ peakQualitySliderAttachment (audioProcessor.apvts, "Peak Quality", peakQualitySl
     }
     
     startTimerHz(60);
-    
-    setSize (800, 600);
 }
 
-SimpleEqualizerAudioProcessorEditor::~SimpleEqualizerAudioProcessorEditor()
+ResponseCurveComponent::~ResponseCurveComponent()
 {
     const auto& params = audioProcessor.getParameters();
     for (auto param : params)
@@ -47,16 +29,36 @@ SimpleEqualizerAudioProcessorEditor::~SimpleEqualizerAudioProcessorEditor()
     }
 }
 
-//==============================================================================
-void SimpleEqualizerAudioProcessorEditor::paint (juce::Graphics& g)
+void ResponseCurveComponent::parameterValueChanged (int parameterIndex, float newValue)
+{
+    parametersChanged.set (true);
+}
+
+void ResponseCurveComponent::timerCallback()
+{
+    if (parametersChanged.compareAndSetBool (false, true))
+    {
+        auto chainSettings = getChainSettings (audioProcessor.apvts);
+        auto peakCoefficients = makePeakFilter (chainSettings, audioProcessor.getSampleRate());
+        updateCoefficients (monoChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+        
+        auto highPassCoefficients = makeHighPassFilter (chainSettings, audioProcessor.getSampleRate());
+        auto lowPassCoefficients = makeLowPassFilter (chainSettings, audioProcessor.getSampleRate());
+        
+        updatePassFilter (monoChain.get<ChainPositions::HighPass>(), highPassCoefficients, chainSettings.highPassSlope);
+        updatePassFilter (monoChain.get<ChainPositions::LowPass>(), lowPassCoefficients, chainSettings.lowPassSlope);
+        
+        repaint();
+    }
+}
+
+void ResponseCurveComponent::paint (juce::Graphics& g)
 {
     using namespace juce;
     // (Our component is opaque, so we must completely fill the background with a solid colour)
     g.fillAll (Colours::black);
     
-    auto bounds = getLocalBounds();
-    
-    auto responseArea = bounds.removeFromTop (bounds.getHeight() * 0.33);
+    auto responseArea = getLocalBounds();
     auto w = responseArea.getWidth();
     
     auto& highpass = monoChain.get<ChainPositions::HighPass>();
@@ -129,6 +131,40 @@ void SimpleEqualizerAudioProcessorEditor::paint (juce::Graphics& g)
     g.strokePath (responseCurve, PathStrokeType(2.f));
 }
 
+//==============================================================================
+SimpleEqualizerAudioProcessorEditor::SimpleEqualizerAudioProcessorEditor (SimpleEqualizerAudioProcessor& p)
+    : AudioProcessorEditor (&p), audioProcessor (p),
+responseCurveComponent(audioProcessor),
+highPassFreqSliderAttachment (audioProcessor.apvts, "HighPass Freq", highPassFreqSlider),
+highPassSlopeSliderAttachment (audioProcessor.apvts, "HighPass Slope", highPassSlopeSlider),
+lowPassFreqSliderAttachment (audioProcessor.apvts, "LowPass Freq", lowPassFreqSlider),
+lowPassSlopeSliderAttachment (audioProcessor.apvts, "LowPass Slope", lowPassSlopeSlider),
+peakFreqSliderAttachment (audioProcessor.apvts, "Peak Freq", peakFreqSlider),
+peakGainSliderAttachment (audioProcessor.apvts, "Peak Gain", peakGainSlider),
+peakQualitySliderAttachment (audioProcessor.apvts, "Peak Quality", peakQualitySlider)
+{
+    // Make sure that before the constructor has finished, you've set the
+    // editor's size to whatever you need it to be.
+    for (auto* comp : getComps())
+    {
+        addAndMakeVisible (comp);
+    }
+    
+    setSize (800, 600);
+}
+
+SimpleEqualizerAudioProcessorEditor::~SimpleEqualizerAudioProcessorEditor()
+{
+}
+
+//==============================================================================
+void SimpleEqualizerAudioProcessorEditor::paint (juce::Graphics& g)
+{
+    using namespace juce;
+    // (Our component is opaque, so we must completely fill the background with a solid colour)
+    g.fillAll (Colours::black);
+}
+
 void SimpleEqualizerAudioProcessorEditor::resized()
 {
     // This is generally where you'll want to lay out the positions of any
@@ -136,6 +172,7 @@ void SimpleEqualizerAudioProcessorEditor::resized()
     auto bounds = getLocalBounds();
     
     auto responseArea = bounds.removeFromTop (bounds.getHeight() * 0.33);
+    responseCurveComponent.setBounds (responseArea);
     
     auto highPassArea = bounds.removeFromLeft (bounds.getWidth() * 0.33);
     auto lowPassArea = bounds.removeFromRight (bounds.getWidth() * 0.5);
@@ -150,23 +187,6 @@ void SimpleEqualizerAudioProcessorEditor::resized()
     peakQualitySlider.setBounds (bounds);
 }
 
-void SimpleEqualizerAudioProcessorEditor::parameterValueChanged (int parameterIndex, float newValue)
-{
-    parametersChanged.set (true);
-}
-
-void SimpleEqualizerAudioProcessorEditor::timerCallback()
-{
-    if (parametersChanged.compareAndSetBool (false, true))
-    {
-        auto chainSettings = getChainSettings (audioProcessor.apvts);
-        auto peakCoefficients = makePeakFilter (chainSettings, audioProcessor.getSampleRate());
-        updateCoefficients (monoChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
-        
-        repaint();
-    }
-}
-
 std::vector<juce::Component*> SimpleEqualizerAudioProcessorEditor::getComps()
 {
     return
@@ -177,6 +197,7 @@ std::vector<juce::Component*> SimpleEqualizerAudioProcessorEditor::getComps()
         &peakGainSlider,
         &peakQualitySlider,
         &highPassSlopeSlider,
-        &lowPassSlopeSlider
+        &lowPassSlopeSlider,
+        &responseCurveComponent
     };
 }
