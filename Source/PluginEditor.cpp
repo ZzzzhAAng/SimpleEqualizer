@@ -9,15 +9,93 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+void LookAndFeel::drawRotarySlider (juce::Graphics &g,
+                                    int x, int y,
+                                    int width, int height,
+                                    float sliderPosProportional,
+                                    float rotaryStartAngle, float rotaryEndAngle,
+                                    juce::Slider &slider)
+{
+    using namespace juce;
+    
+    auto bounds = Rectangle<float> (x, y, width, height);
+    
+    g.setColour (Colour (97u, 20u, 160u));
+    g.fillEllipse (bounds);
+    
+    g.setColour (Colour (255u, 160u, 1u));
+    g.drawEllipse (bounds, 1.f);
+    
+    auto center = bounds.getCentre();
+    
+    Path p;
+    
+    Rectangle<float> r;
+    r.setLeft (center.getX() - 2);
+    r.setRight (center.getX() + 2);
+    r.setTop (bounds.getY());
+    r.setBottom (center.getY());
+    
+    p.addRectangle (r);
+    
+    jassert (rotaryStartAngle < rotaryEndAngle);
+    
+    auto sliderAngRad = jmap (sliderPosProportional, 0.f, 1.f, rotaryStartAngle, rotaryEndAngle);
+    
+    p.applyTransform (AffineTransform().rotated (sliderAngRad, center.getX(), center.getY()));
+    
+    g.fillPath (p);
+}
+
+void RotarySliderWithLabels::paint (juce::Graphics &g)
+{
+    using namespace juce;
+    
+    auto startAng = degreesToRadians (180.f + 45.f);
+    auto endAng = degreesToRadians (180.f - 45.f) + MathConstants<float>::twoPi;
+    
+    auto range = getRange();
+    
+    auto sliderBounds = getSliderBounds();
+    
+    g.setColour (Colours::red);
+    g.drawRect (getLocalBounds());
+    g.setColour (Colours::yellow);
+    g.drawRect (sliderBounds);
+    
+    getLookAndFeel().drawRotarySlider (g,
+                                     sliderBounds.getX(), sliderBounds.getY(),
+                                     sliderBounds.getWidth(), sliderBounds.getHeight(),
+                                     jmap (getValue(), range.getStart(), range.getEnd(), 0.0, 1.0),
+                                     startAng, endAng,
+                                     *this);
+}
+
+juce::Rectangle<int> RotarySliderWithLabels::getSliderBounds() const
+{
+    auto bounds = getLocalBounds();
+    
+    auto size = juce::jmin (bounds.getWidth(), bounds.getHeight());
+    size -= getTextHeight() * 2;
+    
+    juce::Rectangle<int> r;
+    r.setSize (size, size);
+    r.setCentre (bounds.getCentreX(), 0);
+    r.setY (2);
+    
+    return r;
+}
+
+//==============================================================================
 ResponseCurveComponent::ResponseCurveComponent (SimpleEqualizerAudioProcessor& p) : audioProcessor (p)
 {
     const auto& params = audioProcessor.getParameters();
     for (auto param : params)
     {
-        param -> addListener(this);
+        param -> addListener (this);
     }
     
-    startTimerHz(60);
+    startTimerHz (60);
 }
 
 ResponseCurveComponent::~ResponseCurveComponent()
@@ -25,7 +103,7 @@ ResponseCurveComponent::~ResponseCurveComponent()
     const auto& params = audioProcessor.getParameters();
     for (auto param : params)
     {
-        param -> removeListener(this);
+        param -> removeListener (this);
     }
 }
 
@@ -134,6 +212,13 @@ void ResponseCurveComponent::paint (juce::Graphics& g)
 //==============================================================================
 SimpleEqualizerAudioProcessorEditor::SimpleEqualizerAudioProcessorEditor (SimpleEqualizerAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p),
+highPassFreqSlider (*audioProcessor.apvts.getParameter ("HighPass Freq"), "Hz"),
+highPassSlopeSlider (*audioProcessor.apvts.getParameter ("HighPass Slope"), "dB/Oct"),
+lowPassFreqSlider (*audioProcessor.apvts.getParameter ("LowPass Freq"), "Hz"),
+lowPassSlopeSlider (*audioProcessor.apvts.getParameter ("LowPass Slope"), "dB/Oct"),
+peakFreqSlider (*audioProcessor.apvts.getParameter ("Peak Freq"), "Hz"),
+peakGainSlider (*audioProcessor.apvts.getParameter ("Peak Gain"), "dB"),
+peakQualitySlider (*audioProcessor.apvts.getParameter ("Peak Quality"), ""),
 responseCurveComponent(audioProcessor),
 highPassFreqSliderAttachment (audioProcessor.apvts, "HighPass Freq", highPassFreqSlider),
 highPassSlopeSliderAttachment (audioProcessor.apvts, "HighPass Slope", highPassSlopeSlider),
