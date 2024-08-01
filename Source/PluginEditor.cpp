@@ -174,6 +174,7 @@ ResponseCurveComponent::ResponseCurveComponent (SimpleEqualizerAudioProcessor& p
         param -> addListener (this);
     }
     
+    updateChain();
     startTimerHz (60);
 }
 
@@ -195,18 +196,22 @@ void ResponseCurveComponent::timerCallback()
 {
     if (parametersChanged.compareAndSetBool (false, true))
     {
-        auto chainSettings = getChainSettings (audioProcessor.apvts);
-        auto peakCoefficients = makePeakFilter (chainSettings, audioProcessor.getSampleRate());
-        updateCoefficients (monoChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
-        
-        auto highPassCoefficients = makeHighPassFilter (chainSettings, audioProcessor.getSampleRate());
-        auto lowPassCoefficients = makeLowPassFilter (chainSettings, audioProcessor.getSampleRate());
-        
-        updatePassFilter (monoChain.get<ChainPositions::HighPass>(), highPassCoefficients, chainSettings.highPassSlope);
-        updatePassFilter (monoChain.get<ChainPositions::LowPass>(), lowPassCoefficients, chainSettings.lowPassSlope);
-        
+        updateChain();
         repaint();
     }
+}
+
+void ResponseCurveComponent::updateChain()
+{
+    auto chainSettings = getChainSettings (audioProcessor.apvts);
+    auto peakCoefficients = makePeakFilter (chainSettings, audioProcessor.getSampleRate());
+    updateCoefficients (monoChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+    
+    auto highPassCoefficients = makeHighPassFilter (chainSettings, audioProcessor.getSampleRate());
+    auto lowPassCoefficients = makeLowPassFilter (chainSettings, audioProcessor.getSampleRate());
+    
+    updatePassFilter (monoChain.get<ChainPositions::HighPass>(), highPassCoefficients, chainSettings.highPassSlope);
+    updatePassFilter (monoChain.get<ChainPositions::LowPass>(), lowPassCoefficients, chainSettings.lowPassSlope);
 }
 
 void ResponseCurveComponent::paint (juce::Graphics& g)
@@ -310,8 +315,22 @@ peakQualitySliderAttachment (audioProcessor.apvts, "Peak Quality", peakQualitySl
     // Make sure that before the constructor has finished, you've set the
     // editor's size to whatever you need it to be.
     
+    highPassFreqSlider.labels.add ({0.f, "20Hz"});
+    highPassFreqSlider.labels.add ({1.f, "20kHz"});
+    highPassSlopeSlider.labels.add ({0.f, "6"});
+    highPassSlopeSlider.labels.add ({1.f, "36"});
+    
+    lowPassFreqSlider.labels.add ({0.f, "20Hz"});
+    lowPassFreqSlider.labels.add ({1.f, "20kHz"});
+    lowPassSlopeSlider.labels.add ({0.f, "6"});
+    lowPassSlopeSlider.labels.add ({1.f, "36"});
+    
     peakFreqSlider.labels.add ({0.f, "20Hz"});
-    peakFreqSlider.labels.add ({0.f, "20kHz"});
+    peakFreqSlider.labels.add ({1.f, "20kHz"});
+    peakGainSlider.labels.add ({0.f, "-24dB"});
+    peakGainSlider.labels.add ({1.f, "+24dB"});
+    peakQualitySlider.labels.add ({0.f, "0.1"});
+    peakQualitySlider.labels.add ({1.f, "10.0"});
     
     for (auto* comp : getComps())
     {
@@ -338,9 +357,13 @@ void SimpleEqualizerAudioProcessorEditor::resized()
     // This is generally where you'll want to lay out the positions of any
     // subcomponents in your editor..
     auto bounds = getLocalBounds();
-    
-    auto responseArea = bounds.removeFromTop (bounds.getHeight() * 0.33);
+    // float hRatio = JUCE_LIVE_CONSTANT (25) / 100.f;
+    float hRatio = 25.f / 100.f;
+
+    auto responseArea = bounds.removeFromTop (bounds.getHeight() * hRatio);
     responseCurveComponent.setBounds (responseArea);
+    
+    bounds.removeFromTop (6);
     
     auto highPassArea = bounds.removeFromLeft (bounds.getWidth() * 0.33);
     auto lowPassArea = bounds.removeFromRight (bounds.getWidth() * 0.5);

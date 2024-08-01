@@ -68,6 +68,7 @@ struct ResponseCurveComponent: juce::Component,
     ~ResponseCurveComponent();
     
     void parameterValueChanged (int parameterIndex, float newValue) override;
+    
     void parameterGestureChanged (int parameterIndex, bool gestureIsStarting) override {}
     
     void timerCallback() override;
@@ -80,6 +81,8 @@ private:
     juce::Atomic<bool> parametersChanged {false};
     
     MonoChain monoChain;
+    
+    void updateChain();
 };
 
 //==============================================================================
