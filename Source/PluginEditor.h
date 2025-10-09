@@ -89,7 +89,9 @@ private:
 /**
 */
 
-class SimpleEqualizerAudioProcessorEditor : public juce::AudioProcessorEditor
+class SimpleEqualizerAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                            public juce::Button::Listener,
+                                            public juce::ComboBox::Listener
 {
 public:
     SimpleEqualizerAudioProcessorEditor (SimpleEqualizerAudioProcessor&);
@@ -98,6 +100,10 @@ public:
     //==============================================================================
     void paint (juce::Graphics&) override;
     void resized() override;
+    
+    void buttonClicked (juce::Button* button) override;
+    void comboBoxChanged (juce::ComboBox* comboBox) override;
+    void updatePresetComboBox();
 
 private:
     // This reference is provided as a quick way for your editor to
@@ -106,12 +112,22 @@ private:
     
     RotarySliderWithLabels highPassFreqSlider, highPassSlopeSlider, lowPassFreqSlider, lowPassSlopeSlider, peakFreqSlider, peakGainSlider, peakQualitySlider;
     
+    juce::ToggleButton highPassBypassButton, lowPassBypassButton, peakBypassButton;
+    
+    juce::Label highPassLabel, lowPassLabel, peakLabel;
+    
+    juce::ComboBox presetComboBox;
+    juce::TextButton savePresetButton, loadPresetButton, deletePresetButton;
+    juce::TextEditor presetNameEditor;
+    
     ResponseCurveComponent responseCurveComponent;
     
     using APVTS = juce::AudioProcessorValueTreeState;
     using Attachment = APVTS::SliderAttachment;
+    using ButtonAttachment = APVTS::ButtonAttachment;
     
     Attachment highPassFreqSliderAttachment, highPassSlopeSliderAttachment, lowPassFreqSliderAttachment, lowPassSlopeSliderAttachment,peakFreqSliderAttachment, peakGainSliderAttachment, peakQualitySliderAttachment;
+    ButtonAttachment highPassBypassButtonAttachment, lowPassBypassButtonAttachment, peakBypassButtonAttachment;
     
     std::vector<juce::Component*> getComps();
 

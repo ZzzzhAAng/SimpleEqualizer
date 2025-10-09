@@ -22,6 +22,16 @@ SimpleEqualizerAudioProcessor::SimpleEqualizerAudioProcessor()
                        )
 #endif
 {
+    apvts.addParameterListener ("HighPass Freq", this);
+    apvts.addParameterListener ("LowPass Freq", this);
+    apvts.addParameterListener ("Peak Freq", this);
+    apvts.addParameterListener ("Peak Gain", this);
+    apvts.addParameterListener ("Peak Quality", this);
+    apvts.addParameterListener ("HighPass Slope", this);
+    apvts.addParameterListener ("LowPass Slope", this);
+    apvts.addParameterListener ("HighPass Bypass", this);
+    apvts.addParameterListener ("LowPass Bypass", this);
+    apvts.addParameterListener ("Peak Bypass", this);
 }
 
 SimpleEqualizerAudioProcessor::~SimpleEqualizerAudioProcessor()
@@ -155,7 +165,11 @@ void SimpleEqualizerAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
         buffer.clear (i, 0, buffer.getNumSamples());
     }
     
-    updateFilters();
+    // 只在参数改变时更新滤波器
+    if (parametersChanged.compareAndSetBool (false, true))
+    {
+        updateFilters();
+    }
     
     juce::dsp::AudioBlock<float> block (buffer);
     
@@ -167,19 +181,6 @@ void SimpleEqualizerAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     
     leftChain.process (leftContext);
     rightChain.process (rightContext);
-
-    // This is the place where you'd normally do the guts of your plugin's
-    // audio processing...
-    // Make sure to reset the state if your inner loop is processing
-    // the samples and the outer loop is handling the channels.
-    // Alternatively, you can process the samples with the channels
-    // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
-    {
-        auto* channelData = buffer.getWritePointer (channel);
-
-        // ..do something to the data...
-    }
 }
 
 //==============================================================================
@@ -216,6 +217,77 @@ void SimpleEqualizerAudioProcessor::setStateInformation (const void* data, int s
     }
 }
 
+void SimpleEqualizerAudioProcessor::parameterChanged (const juce::String& parameterID, float newValue)
+{
+    parametersChanged.set (true);
+}
+
+void SimpleEqualizerAudioProcessor::savePreset (const juce::String& presetName)
+{
+    auto presetDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                        .getChildFile ("SimpleEqualizer")
+                        .getChildFile ("Presets");
+    
+    if (! presetDir.exists())
+        presetDir.createDirectory();
+    
+    auto presetFile = presetDir.getChildFile (presetName + ".xml");
+    
+    juce::MemoryBlock data;
+    getStateInformation (data);
+    
+    presetFile.replaceWithData (data.getData(), data.getSize());
+}
+
+void SimpleEqualizerAudioProcessor::loadPreset (const juce::String& presetName)
+{
+    auto presetDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                        .getChildFile ("SimpleEqualizer")
+                        .getChildFile ("Presets");
+    
+    auto presetFile = presetDir.getChildFile (presetName + ".xml");
+    
+    if (presetFile.exists())
+    {
+        juce::MemoryBlock data;
+        presetFile.loadFileAsData (data);
+        setStateInformation (data.getData(), (int)data.getSize());
+    }
+}
+
+juce::StringArray SimpleEqualizerAudioProcessor::getPresetNames() const
+{
+    juce::StringArray presetNames;
+    
+    auto presetDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                        .getChildFile ("SimpleEqualizer")
+                        .getChildFile ("Presets");
+    
+    if (presetDir.exists())
+    {
+        auto files = presetDir.findChildFiles (juce::File::findFiles, false, "*.xml");
+        
+        for (auto file : files)
+        {
+            presetNames.add (file.getFileNameWithoutExtension());
+        }
+    }
+    
+    return presetNames;
+}
+
+void SimpleEqualizerAudioProcessor::deletePreset (const juce::String& presetName)
+{
+    auto presetDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                        .getChildFile ("SimpleEqualizer")
+                        .getChildFile ("Presets");
+    
+    auto presetFile = presetDir.getChildFile (presetName + ".xml");
+    
+    if (presetFile.exists())
+        presetFile.deleteFile();
+}
+
 ChainSettings getChainSettings (juce::AudioProcessorValueTreeState& apvts)
 {
     ChainSettings settings;
@@ -228,6 +300,9 @@ ChainSettings getChainSettings (juce::AudioProcessorValueTreeState& apvts)
     settings.peakQuality = apvts.getRawParameterValue ("Peak Quality") -> load();
     settings.highPassSlope = static_cast<Slope>(apvts.getRawParameterValue ("HighPass Slope") -> load());
     settings.lowPassSlope = static_cast<Slope>(apvts.getRawParameterValue ("LowPass Slope") -> load());
+    settings.highPassBypass = apvts.getRawParameterValue ("HighPass Bypass") -> load() > 0.5f;
+    settings.lowPassBypass = apvts.getRawParameterValue ("LowPass Bypass") -> load() > 0.5f;
+    settings.peakBypass = apvts.getRawParameterValue ("Peak Bypass") -> load() > 0.5f;
     
     return settings;
 }
@@ -242,14 +317,15 @@ Coefficients makePeakFilter (const ChainSettings& chainSettings, double sampleRa
 
 void SimpleEqualizerAudioProcessor::updatePeakFilter (const ChainSettings &chainSettings)
 {
-
-    
     auto peakCoefficients = makePeakFilter(chainSettings, getSampleRate());
     updateCoefficients (leftChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
     updateCoefficients (rightChain.get<ChainPositions::Peak>().coefficients, peakCoefficients);
+    
+    leftChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypass);
+    rightChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypass);
 }
 
-void /*SimpleEqualizerAudioProcessor*/::updateCoefficients (Coefficients &old, const Coefficients &replacements)
+void updateCoefficients (Coefficients &old, const Coefficients &replacements)
 {
     *old = *replacements;
 }
@@ -262,6 +338,9 @@ void SimpleEqualizerAudioProcessor::updateHighPassFilters (const ChainSettings &
     
     updatePassFilter (leftHighPass, highPassCoefficients, chainSettings.highPassSlope);
     updatePassFilter (rightHighPass, highPassCoefficients, chainSettings.highPassSlope);
+    
+    leftChain.setBypassed<ChainPositions::HighPass>(chainSettings.highPassBypass);
+    rightChain.setBypassed<ChainPositions::HighPass>(chainSettings.highPassBypass);
 }
 
 void SimpleEqualizerAudioProcessor::updateLowPassFilters (const ChainSettings &chainSettings)
@@ -271,6 +350,9 @@ void SimpleEqualizerAudioProcessor::updateLowPassFilters (const ChainSettings &c
     auto& rightLowPass = rightChain.get<ChainPositions::LowPass>();
     updatePassFilter (leftLowPass, lowPassCoefficients, chainSettings.lowPassSlope);
     updatePassFilter (rightLowPass, lowPassCoefficients, chainSettings.lowPassSlope);
+    
+    leftChain.setBypassed<ChainPositions::LowPass>(chainSettings.lowPassBypass);
+    rightChain.setBypassed<ChainPositions::LowPass>(chainSettings.lowPassBypass);
 }
 
 void SimpleEqualizerAudioProcessor::updateFilters()

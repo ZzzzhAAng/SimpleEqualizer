@@ -222,6 +222,38 @@ void ResponseCurveComponent::paint (juce::Graphics& g)
     
     auto responseArea = getLocalBounds();
     auto w = responseArea.getWidth();
+    auto h = responseArea.getHeight();
+    
+    // 绘制频率网格线
+    g.setColour (Colours::darkgrey);
+    g.setFont (10.0f);
+    
+    // 频率标签：20Hz, 100Hz, 1kHz, 10kHz, 20kHz
+    std::vector<float> freqLabels = {20.0f, 100.0f, 1000.0f, 10000.0f, 20000.0f};
+    for (auto freq : freqLabels)
+    {
+        auto x = mapToLog10 (freq, 20.0f, 20000.0f) * w;
+        g.drawVerticalLine (juce::roundToInt (x), 0, h);
+        
+        juce::String freqText;
+        if (freq >= 1000.0f)
+            freqText = juce::String (freq / 1000.0f, 1) + "k";
+        else
+            freqText = juce::String (freq, 0);
+        
+        g.drawText (freqText, juce::roundToInt (x) - 20, h - 20, 40, 15, juce::Justification::centred);
+    }
+    
+    // 绘制增益网格线 (-24dB, -12dB, 0dB, +12dB, +24dB)
+    std::vector<float> gainLabels = {-24.0f, -12.0f, 0.0f, 12.0f, 24.0f};
+    for (auto gain : gainLabels)
+    {
+        auto y = jmap (gain, -24.0f, 24.0f, (float)h, 0.0f);
+        g.drawHorizontalLine (juce::roundToInt (y), 0, w);
+        
+        juce::String gainText = juce::String (gain, 0) + "dB";
+        g.drawText (gainText, 5, juce::roundToInt (y) - 7, 30, 14, juce::Justification::left);
+    }
     
     auto& highpass = monoChain.get<ChainPositions::HighPass>();
     auto& lowpass = monoChain.get<ChainPositions::LowPass>();
@@ -256,16 +288,16 @@ void ResponseCurveComponent::paint (juce::Graphics& g)
         
         if (! lowpass.isBypassed<0>())
             mag *= lowpass.get<0>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
-        if (! lowpass.isBypassed<0>())
-            mag *= lowpass.get<0>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
-        if (! lowpass.isBypassed<0>())
-            mag *= lowpass.get<0>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
-        if (! lowpass.isBypassed<0>())
-            mag *= lowpass.get<0>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
-        if (! lowpass.isBypassed<0>())
-            mag *= lowpass.get<0>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
-        if (! lowpass.isBypassed<0>())
-            mag *= lowpass.get<0>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
+        if (! lowpass.isBypassed<1>())
+            mag *= lowpass.get<1>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
+        if (! lowpass.isBypassed<2>())
+            mag *= lowpass.get<2>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
+        if (! lowpass.isBypassed<3>())
+            mag *= lowpass.get<3>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
+        if (! lowpass.isBypassed<4>())
+            mag *= lowpass.get<4>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
+        if (! lowpass.isBypassed<5>())
+            mag *= lowpass.get<5>().coefficients->getMagnitudeForFrequency (freq, sampleRate);
         
         mags[i] = Decibels::gainToDecibels  (mag);
     }
@@ -303,6 +335,17 @@ lowPassSlopeSlider (*audioProcessor.apvts.getParameter ("LowPass Slope"), "dB/Oc
 peakFreqSlider (*audioProcessor.apvts.getParameter ("Peak Freq"), "Hz"),
 peakGainSlider (*audioProcessor.apvts.getParameter ("Peak Gain"), "dB"),
 peakQualitySlider (*audioProcessor.apvts.getParameter ("Peak Quality"), ""),
+highPassBypassButton ("BYPASS"),
+lowPassBypassButton ("BYPASS"),
+peakBypassButton ("BYPASS"),
+highPassLabel ("High Pass", "High Pass"),
+lowPassLabel ("Low Pass", "Low Pass"),
+peakLabel ("Peak", "Peak"),
+presetComboBox(),
+savePresetButton ("Save"),
+loadPresetButton ("Load"),
+deletePresetButton ("Delete"),
+presetNameEditor(),
 responseCurveComponent(audioProcessor),
 highPassFreqSliderAttachment (audioProcessor.apvts, "HighPass Freq", highPassFreqSlider),
 highPassSlopeSliderAttachment (audioProcessor.apvts, "HighPass Slope", highPassSlopeSlider),
@@ -310,7 +353,10 @@ lowPassFreqSliderAttachment (audioProcessor.apvts, "LowPass Freq", lowPassFreqSl
 lowPassSlopeSliderAttachment (audioProcessor.apvts, "LowPass Slope", lowPassSlopeSlider),
 peakFreqSliderAttachment (audioProcessor.apvts, "Peak Freq", peakFreqSlider),
 peakGainSliderAttachment (audioProcessor.apvts, "Peak Gain", peakGainSlider),
-peakQualitySliderAttachment (audioProcessor.apvts, "Peak Quality", peakQualitySlider)
+peakQualitySliderAttachment (audioProcessor.apvts, "Peak Quality", peakQualitySlider),
+highPassBypassButtonAttachment (audioProcessor.apvts, "HighPass Bypass", highPassBypassButton),
+lowPassBypassButtonAttachment (audioProcessor.apvts, "LowPass Bypass", lowPassBypassButton),
+peakBypassButtonAttachment (audioProcessor.apvts, "Peak Bypass", peakBypassButton)
 {
     // Make sure that before the constructor has finished, you've set the
     // editor's size to whatever you need it to be.
@@ -331,6 +377,58 @@ peakQualitySliderAttachment (audioProcessor.apvts, "Peak Quality", peakQualitySl
     peakGainSlider.labels.add ({1.f, "+24dB"});
     peakQualitySlider.labels.add ({0.f, "0.1"});
     peakQualitySlider.labels.add ({1.f, "10.0"});
+    
+    // 设置标签样式
+    highPassLabel.setColour (juce::Label::ColourIds::textColourId, juce::Colours::white);
+    highPassLabel.setJustificationType (juce::Justification::centred);
+    highPassLabel.setFont (juce::Font (16.0f, juce::Font::bold));
+    
+    lowPassLabel.setColour (juce::Label::ColourIds::textColourId, juce::Colours::white);
+    lowPassLabel.setJustificationType (juce::Justification::centred);
+    lowPassLabel.setFont (juce::Font (16.0f, juce::Font::bold));
+    
+    peakLabel.setColour (juce::Label::ColourIds::textColourId, juce::Colours::white);
+    peakLabel.setJustificationType (juce::Justification::centred);
+    peakLabel.setFont (juce::Font (16.0f, juce::Font::bold));
+    
+    // 设置按钮样式
+    highPassBypassButton.setColour (juce::ToggleButton::ColourIds::textColourId, juce::Colours::white);
+    highPassBypassButton.setColour (juce::ToggleButton::ColourIds::tickColourId, juce::Colours::orange);
+    highPassBypassButton.setColour (juce::ToggleButton::ColourIds::tickDisabledColourId, juce::Colours::grey);
+    
+    lowPassBypassButton.setColour (juce::ToggleButton::ColourIds::textColourId, juce::Colours::white);
+    lowPassBypassButton.setColour (juce::ToggleButton::ColourIds::tickColourId, juce::Colours::orange);
+    lowPassBypassButton.setColour (juce::ToggleButton::ColourIds::tickDisabledColourId, juce::Colours::grey);
+    
+    peakBypassButton.setColour (juce::ToggleButton::ColourIds::textColourId, juce::Colours::white);
+    peakBypassButton.setColour (juce::ToggleButton::ColourIds::tickColourId, juce::Colours::orange);
+    peakBypassButton.setColour (juce::ToggleButton::ColourIds::tickDisabledColourId, juce::Colours::grey);
+    
+    // 设置预设组件样式
+    presetComboBox.setColour (juce::ComboBox::ColourIds::backgroundColourId, juce::Colours::darkgrey);
+    presetComboBox.setColour (juce::ComboBox::ColourIds::textColourId, juce::Colours::white);
+    presetComboBox.setColour (juce::ComboBox::ColourIds::arrowColourId, juce::Colours::orange);
+    
+    savePresetButton.setColour (juce::TextButton::ColourIds::buttonColourId, juce::Colours::darkgrey);
+    savePresetButton.setColour (juce::TextButton::ColourIds::textColourOffId, juce::Colours::white);
+    
+    loadPresetButton.setColour (juce::TextButton::ColourIds::buttonColourId, juce::Colours::darkgrey);
+    loadPresetButton.setColour (juce::TextButton::ColourIds::textColourOffId, juce::Colours::white);
+    
+    deletePresetButton.setColour (juce::TextButton::ColourIds::buttonColourId, juce::Colours::darkgrey);
+    deletePresetButton.setColour (juce::TextButton::ColourIds::textColourOffId, juce::Colours::white);
+    
+    presetNameEditor.setColour (juce::TextEditor::ColourIds::backgroundColourId, juce::Colours::darkgrey);
+    presetNameEditor.setColour (juce::TextEditor::ColourIds::textColourId, juce::Colours::white);
+    presetNameEditor.setText ("New Preset");
+    
+    // 设置回调
+    savePresetButton.addListener (this);
+    loadPresetButton.addListener (this);
+    deletePresetButton.addListener (this);
+    presetComboBox.addListener (this);
+    
+    updatePresetComboBox();
     
     for (auto* comp : getComps())
     {
@@ -365,17 +463,91 @@ void SimpleEqualizerAudioProcessorEditor::resized()
     
     bounds.removeFromTop (6);
     
+    // 预设区域
+    auto presetArea = bounds.removeFromTop (40);
+    presetComboBox.setBounds (presetArea.removeFromLeft (presetArea.getWidth() * 0.3));
+    presetNameEditor.setBounds (presetArea.removeFromLeft (presetArea.getWidth() * 0.4));
+    savePresetButton.setBounds (presetArea.removeFromLeft (presetArea.getWidth() * 0.33));
+    loadPresetButton.setBounds (presetArea.removeFromLeft (presetArea.getWidth() * 0.5));
+    deletePresetButton.setBounds (presetArea);
+    
+    bounds.removeFromTop (6);
+    
     auto highPassArea = bounds.removeFromLeft (bounds.getWidth() * 0.33);
     auto lowPassArea = bounds.removeFromRight (bounds.getWidth() * 0.5);
     
-    highPassFreqSlider.setBounds (highPassArea.removeFromTop (highPassArea.getHeight() * 0.5));
-    highPassSlopeSlider.setBounds (highPassArea);
-    lowPassFreqSlider.setBounds (lowPassArea.removeFromTop (lowPassArea.getHeight() * 0.5));
-    lowPassSlopeSlider.setBounds (lowPassArea);
+    // 高通滤波器区域
+    highPassLabel.setBounds (highPassArea.removeFromTop (30));
+    highPassFreqSlider.setBounds (highPassArea.removeFromTop (highPassArea.getHeight() * 0.35));
+    highPassSlopeSlider.setBounds (highPassArea.removeFromTop (highPassArea.getHeight() * 0.6));
+    highPassBypassButton.setBounds (highPassArea);
     
-    peakFreqSlider.setBounds (bounds.removeFromTop (bounds.getHeight() * 0.33));
-    peakGainSlider.setBounds (bounds.removeFromTop (bounds.getHeight() * 0.5));
-    peakQualitySlider.setBounds (bounds);
+    // 低通滤波器区域
+    lowPassLabel.setBounds (lowPassArea.removeFromTop (30));
+    lowPassFreqSlider.setBounds (lowPassArea.removeFromTop (lowPassArea.getHeight() * 0.35));
+    lowPassSlopeSlider.setBounds (lowPassArea.removeFromTop (lowPassArea.getHeight() * 0.6));
+    lowPassBypassButton.setBounds (lowPassArea);
+    
+    // 峰值滤波器区域
+    peakLabel.setBounds (bounds.removeFromTop (30));
+    peakFreqSlider.setBounds (bounds.removeFromTop (bounds.getHeight() * 0.25));
+    peakGainSlider.setBounds (bounds.removeFromTop (bounds.getHeight() * 0.4));
+    peakQualitySlider.setBounds (bounds.removeFromTop (bounds.getHeight() * 0.6));
+    peakBypassButton.setBounds (bounds);
+}
+
+void SimpleEqualizerAudioProcessorEditor::buttonClicked (juce::Button* button)
+{
+    if (button == &savePresetButton)
+    {
+        auto presetName = presetNameEditor.getText();
+        if (presetName.isNotEmpty())
+        {
+            audioProcessor.savePreset (presetName);
+            updatePresetComboBox();
+            presetNameEditor.setText ("");
+        }
+    }
+    else if (button == &loadPresetButton)
+    {
+        auto selectedPreset = presetComboBox.getText();
+        if (selectedPreset.isNotEmpty())
+        {
+            audioProcessor.loadPreset (selectedPreset);
+        }
+    }
+    else if (button == &deletePresetButton)
+    {
+        auto selectedPreset = presetComboBox.getText();
+        if (selectedPreset.isNotEmpty())
+        {
+            audioProcessor.deletePreset (selectedPreset);
+            updatePresetComboBox();
+        }
+    }
+}
+
+void SimpleEqualizerAudioProcessorEditor::comboBoxChanged (juce::ComboBox* comboBox)
+{
+    if (comboBox == &presetComboBox)
+    {
+        auto selectedPreset = presetComboBox.getText();
+        if (selectedPreset.isNotEmpty())
+        {
+            audioProcessor.loadPreset (selectedPreset);
+        }
+    }
+}
+
+void SimpleEqualizerAudioProcessorEditor::updatePresetComboBox()
+{
+    presetComboBox.clear();
+    auto presetNames = audioProcessor.getPresetNames();
+    
+    for (auto presetName : presetNames)
+    {
+        presetComboBox.addItem (presetName, presetComboBox.getNumItems() + 1);
+    }
 }
 
 std::vector<juce::Component*> SimpleEqualizerAudioProcessorEditor::getComps()
@@ -389,6 +561,17 @@ std::vector<juce::Component*> SimpleEqualizerAudioProcessorEditor::getComps()
         &peakQualitySlider,
         &highPassSlopeSlider,
         &lowPassSlopeSlider,
+        &highPassBypassButton,
+        &lowPassBypassButton,
+        &peakBypassButton,
+        &highPassLabel,
+        &lowPassLabel,
+        &peakLabel,
+        &presetComboBox,
+        &savePresetButton,
+        &loadPresetButton,
+        &deletePresetButton,
+        &presetNameEditor,
         &responseCurveComponent
     };
 }

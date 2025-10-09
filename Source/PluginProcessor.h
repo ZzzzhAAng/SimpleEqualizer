@@ -25,6 +25,7 @@ struct ChainSettings
     float highPassFreq {0}, lowPassFreq {0};
     float peakFreq {0}, peakGainInDecibels {0}, peakQuality {0};
     Slope highPassSlope {Slope::Slope_6}, lowPassSlope {Slope::Slope_6};
+    bool highPassBypass {false}, lowPassBypass {false}, peakBypass {false};
 };
 
 ChainSettings getChainSettings (juce::AudioProcessorValueTreeState& apvts);
@@ -109,7 +110,8 @@ inline auto makeLowPassFilter (const ChainSettings& chainSettings, double sample
 //==============================================================================
 /**
 */
-class SimpleEqualizerAudioProcessor  : public juce::AudioProcessor
+class SimpleEqualizerAudioProcessor  : public juce::AudioProcessor,
+                                       public juce::AudioProcessorValueTreeState::Listener
 {
 public:
     //==============================================================================
@@ -149,11 +151,22 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
     
+    //==============================================================================
+    void parameterChanged (const juce::String& parameterID, float newValue) override;
+    
+    // 预设系统
+    void savePreset (const juce::String& presetName);
+    void loadPreset (const juce::String& presetName);
+    juce::StringArray getPresetNames() const;
+    void deletePreset (const juce::String& presetName);
+    
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts {*this, nullptr, "Parameters", createParameterLayout()};
 
 private:
     MonoChain leftChain, rightChain;
+    
+    juce::Atomic<bool> parametersChanged {false};
     
     void updatePeakFilter (const ChainSettings& chainSettings);
     void updateHighPassFilters (const ChainSettings& chainsettings);
